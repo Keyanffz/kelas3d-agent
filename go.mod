@@ -1,0 +1,8 @@
+module github.com/Keyanffz/kelas3d-agent
+
+go 1.27.3
+
+require (
+	github.com/jezek/xgb v1.3.1
+	golang.org/x/sys v0.49.0
+)
