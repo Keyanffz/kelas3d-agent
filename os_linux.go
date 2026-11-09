@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -71,6 +72,45 @@ func (s *sensor) window() (window, error) {
 	return window{}, errUnsupported
 }
 
+func (s *sensor) windows() ([]window, error) {
+	switch {
+	case s.hyprland:
+		out, err := exec.Command("hyprctl", "clients", "-j").Output()
+		if err != nil {
+			return nil, fmt.Errorf("hyprctl: %w", err)
+		}
+		return hyprlandClients(out)
+	case s.x != nil:
+		return x11Windows(s.x)
+	}
+	return nil, errUnsupported
+}
+
+type hyprClient struct {
+	Class        string `json:"class"`
+	Title        string `json:"title"`
+	PID          int    `json:"pid"`
+	Mapped       bool   `json:"mapped"`
+	Hidden       bool   `json:"hidden"`
+	FocusHistory int    `json:"focusHistoryID"`
+}
+
+// hyprlandClients: jendela yang terpetakan dan tidak disembunyikan, urut dari yang terakhir difokus.
+func hyprlandClients(out []byte) ([]window, error) {
+	var clients []hyprClient
+	if err := json.Unmarshal(out, &clients); err != nil {
+		return nil, fmt.Errorf("hyprctl: %w", err)
+	}
+	slices.SortStableFunc(clients, func(a, b hyprClient) int { return a.FocusHistory - b.FocusHistory })
+	list := []window{}
+	for _, c := range clients {
+		if c.Mapped && !c.Hidden && c.Title != "" {
+			list = append(list, window{Process: procName(c.PID, c.Class), Title: c.Title})
+		}
+	}
+	return list, nil
+}
+
 func (s *sensor) idle() (time.Duration, error) {
 	switch {
 	case s.idleErr != nil:
@@ -114,7 +154,30 @@ func x11Window(x *xgb.Conn) (window, error) {
 	if id == 0 {
 		return window{}, nil
 	}
+	return x11Info(x, id), nil
+}
 
+// x11Windows: jendela aplikasi dari _NET_CLIENT_LIST_STACKING (bawah ke atas), dibalik supaya yang paling atas
+// duluan. Window manager tanpa daftar urutan memakai _NET_CLIENT_LIST.
+func x11Windows(x *xgb.Conn) ([]window, error) {
+	root := xproto.Setup(x).DefaultScreen(x).Root
+	ids, err := x11Prop(x, root, "_NET_CLIENT_LIST_STACKING")
+	if err == nil && len(ids) == 0 {
+		ids, err = x11Prop(x, root, "_NET_CLIENT_LIST")
+	}
+	if err != nil {
+		return nil, err
+	}
+	list := []window{}
+	for i := len(ids)/4 - 1; i >= 0; i-- {
+		if w := x11Info(x, xproto.Window(xgb.Get32(ids[i*4:]))); w.Title != "" {
+			list = append(list, w)
+		}
+	}
+	return list, nil
+}
+
+func x11Info(x *xgb.Conn, id xproto.Window) window {
 	title, _ := x11Prop(x, id, "_NET_WM_NAME")
 	if len(title) == 0 {
 		title, _ = x11Prop(x, id, "WM_NAME")
@@ -123,7 +186,7 @@ func x11Window(x *xgb.Conn) (window, error) {
 	if pid, _ := x11Prop(x, id, "_NET_WM_PID"); len(pid) >= 4 {
 		w.Process = procName(int(xgb.Get32(pid)), "")
 	}
-	return w, nil
+	return w
 }
 
 func x11Prop(x *xgb.Conn, win xproto.Window, name string) ([]byte, error) {

@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +25,12 @@ func TestCodeDetail(t *testing.T) {
 		{"VS Code remote", window{"code", "server.go - api [SSH: lab] - Visual Studio Code"}, "api", "server.go"},
 		{"VS Code workspace", window{"code", "app.vue - kelas (Workspace) - Visual Studio Code"}, "kelas", "app.vue"},
 		{"VS Code Insiders", window{"code-insiders", "index.php - laravel - Visual Studio Code - Insiders"}, "laravel", "index.php"},
+		{"Cursor", window{"Cursor.exe", "● auth.ts - toko-online - Cursor"}, "toko-online", "auth.ts"},
+		{"Windsurf tanpa editor terbuka", window{"windsurf", "toko-online - Windsurf"}, "", ""},
+		{"Antigravity", window{"antigravity-ide", "Semester 5 - Antigravity IDE - index.html"}, "Semester 5", "index.html"},
+		{"Antigravity belum disimpan", window{"Antigravity.exe", "toko-online - Antigravity - ● auth.ts"}, "toko-online", "auth.ts"},
+		{"Antigravity tanpa editor terbuka", window{"antigravity-ide", "Semester 5 - Antigravity IDE"}, "", ""},
+		{"Android Studio", window{"studio64.exe", "MyApp – MainActivity.kt [MyApp.app.main]"}, "MyApp", "MainActivity.kt"},
 		{"PyCharm", window{"pycharm64.exe", "toko-online – auth.py"}, "toko-online", "auth.py"},
 		{"PyCharm dengan path", window{"pycharm", "toko-online [~/kode/toko-online] – src/models/user.py"}, "toko-online", "user.py"},
 		{"PyCharm layar awal", window{"pycharm", "Welcome to PyCharm"}, "", ""},
@@ -75,6 +83,18 @@ func TestReportNeverSendsTitles(t *testing.T) {
 		{"telegram-desktop", "Pacar ❤️"},
 		{"code", "Gmail Rahasia - Visual Studio Code Fake — Mozilla Firefox"},
 	}
+	// Daftar aplikasi terbuka cuma boleh berisi label dan nama proses.
+	b, _ := json.Marshal(openApps(rules, nil, windows))
+	for _, w := range windows {
+		for _, word := range strings.Fields(w.Title) {
+			lower := strings.ToLower(word)
+			if len(word) > 3 && strings.Contains(strings.ToLower(string(b)), lower) && !strings.Contains(strings.ToLower(w.Process), lower) &&
+				!slices.ContainsFunc(rules, func(r appRule) bool { return strings.EqualFold(r.Label, word) }) {
+				t.Errorf("open_apps: kata %q dari judul ikut terkirim: %s", word, b)
+			}
+		}
+	}
+
 	for _, w := range windows {
 		r := buildReport(rules, w, 0, "192.168.10.23", time.Now())
 		b, _ := json.Marshal(r)
@@ -91,6 +111,42 @@ func TestReportNeverSendsTitles(t *testing.T) {
 				t.Errorf("%q: kata %q dari judul ikut terkirim: %s", w.Title, word, b)
 			}
 		}
+	}
+}
+
+func TestOpenApps(t *testing.T) {
+	rules := []appRule{
+		{MatchOn: "title", Pattern: "ChatGPT", Activity: "vibe_coding", Label: "ChatGPT", Priority: 30},
+		{MatchOn: "process", Pattern: "code", Activity: "ngoding", Label: "VS Code", Priority: 10},
+		{MatchOn: "process", Pattern: "chrome", Activity: "browsing", Label: "Chrome", Priority: 5},
+	}
+	focused := "VS Code"
+	got := openApps(rules, &focused, []window{
+		{"code", "auth.ts - toko - Visual Studio Code"}, // aplikasi yang sedang fokus
+		{"chrome", "Kotak Masuk - Gmail - Google Chrome"},
+		{"chrome", "Tugas - ChatGPT - Google Chrome"},
+		{"chrome", "YouTube - Google Chrome"}, // Chrome sudah ada
+		{"Discord.exe", "#umum | Bengkod - Discord"},
+	})
+	want := []openApp{{"browsing", "Chrome"}, {"vibe_coding", "ChatGPT"}, {"lainnya", "Discord"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("openApps = %v, mau %v", got, want)
+	}
+
+	var banyak []window
+	for i := range 20 {
+		banyak = append(banyak, window{Process: fmt.Sprintf("app%d.exe", i), Title: "x"})
+	}
+	if n := len(openApps(rules, nil, banyak)); n != maxOpenApps {
+		t.Errorf("%d aplikasi, mau dibatasi %d", n, maxOpenApps)
+	}
+
+	// nil: desktop belum didukung (dikirim null); kosong: tidak ada jendela lain (dikirim []).
+	if openApps(rules, nil, nil) != nil {
+		t.Error("tanpa daftar jendela harus nil")
+	}
+	if b, _ := json.Marshal(openApps(rules, &focused, []window{{"code", "x"}})); string(b) != "[]" {
+		t.Errorf("tanpa aplikasi lain = %s, mau []", b)
 	}
 }
 

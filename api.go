@@ -65,14 +65,21 @@ type schedule struct {
 
 // report: satu laporan. Antrean offline menyimpan bentuk yang sama, dan field null tetap dikirim.
 type report struct {
-	Activity    string  `json:"activity"`
-	AppLabel    *string `json:"app_label"`
-	Project     *string `json:"project"`
-	FileName    *string `json:"file_name"`
-	Language    *string `json:"language"`
-	IdleSeconds int     `json:"idle_seconds"`
-	LocalIP     *string `json:"local_ip"`
-	SentAt      string  `json:"sent_at"`
+	Activity string  `json:"activity"`
+	AppLabel *string `json:"app_label"`
+	Project  *string `json:"project"`
+	FileName *string `json:"file_name"`
+	Language *string `json:"language"`
+	// Aplikasi lain yang jendelanya terbuka. nil (null) kalau desktop ini belum bisa membaca daftar jendela.
+	OpenApps    []openApp `json:"open_apps"`
+	IdleSeconds int       `json:"idle_seconds"`
+	LocalIP     *string   `json:"local_ip"`
+	SentAt      string    `json:"sent_at"`
+}
+
+type openApp struct {
+	Activity string `json:"activity"`
+	Label    string `json:"label"`
 }
 
 type heartbeat struct {

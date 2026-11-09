@@ -4,7 +4,7 @@ Acuan cara kerja agent: perintah CLI, file di laptop, isi heartbeat, cara membac
 
 ## Cara kerja
 
-1. Installer (`install.ps1` atau `install.sh`) menjelaskan data yang diambil, mengunduh biner dari GitHub Releases ke folder user, lalu menambahkannya ke PATH.
+1. Installer (`install.ps1` atau `install.sh`) menjelaskan data yang diambil, mengunduh biner dari GitHub Releases (atau dari server API sendiri, lihat Menyajikan dari server API) ke folder user, lalu menambahkannya ke PATH.
 2. `kelas3d login <kode>` menukar kode install pribadi dari ketua kelas jadi token laptop (`POST /api/agent/login`), menyimpannya di `config.json`, lalu mendaftarkan agent supaya jalan otomatis tiap login ke OS dan langsung menyalakannya.
 3. `kelas3d run` (dijalankan service) mengambil jadwal dan `app_rules` (`GET /api/agent/config`) saat mulai dan tiap 5 menit.
 4. Tiap `heartbeat_interval` detik (default 10), kalau sekarang ada di dalam jadwal `kelas` salah satu ruangan, agent membaca jendela aktif, lama idle, dan IP lokal, mencocokkannya dengan `app_rules`, lalu mengirim `POST /api/agent/heartbeat`. Di luar jadwal, agent diam dan tidak mengirim apa pun.
@@ -79,6 +79,7 @@ Folder dibuat dengan izin `0700`. `config.json` dan file JSON lain ditulis lewat
   "project": "toko-online",
   "file_name": "auth.ts",
   "language": "TypeScript",
+  "open_apps": [{ "activity": "browsing", "label": "Chrome" }, { "activity": "main_game", "label": "Steam" }],
   "idle_seconds": 12,
   "local_ip": "192.168.10.23",
   "sent_at": "2026-11-09T09:15:20+07:00",
@@ -91,6 +92,7 @@ Folder dibuat dengan izin `0700`. `config.json` dan file JSON lain ditulis lewat
 
 - `activity` dan `app_label` dari aturan yang cocok. Kalau tidak ada yang cocok, `activity` `lainnya` dan `app_label` nama proses tanpa `.exe` (contoh `Notepad`, `firefox`), atau `null` kalau tidak ada jendela aktif.
 - `project`, `file_name`, dan `language` cuma diisi untuk `activity` `ngoding`, dari judul window (lihat bagian berikut). Selain itu `null`. Panjangnya dipotong ke 255 karakter sesuai batas API.
+- `open_apps`: aplikasi lain yang jendelanya terbuka, urut dari yang terakhir dipakai, maksimal 8. Tiap jendela dicocokkan ke aturan yang sama dengan jendela aktif, lalu cuma `activity` dan `label` yang dikirim; judulnya tidak. Aplikasi yang sedang fokus dan label kembar dilewati. `null` kalau desktop itu belum bisa membaca daftar jendela (GNOME/KDE Wayland), `[]` kalau tidak ada jendela lain.
 - `idle_seconds`: detik sejak input keyboard atau mouse terakhir.
 - `local_ip`: alamat lokal koneksi UDP ke host server (`net.Dial` tanpa mengirim paket), jadi yang terambil IP interface yang dipakai ke server. Ke `localhost` hasilnya `::1` atau `127.0.0.1`. `null` kalau gagal.
 - `sent_at`: ISO 8601 dengan zona waktu laptop.
@@ -106,7 +108,9 @@ Diambil di `title.go` dari judul window, cuma untuk hasil `ngoding`. Pola yang t
 | VS Code (juga Insiders, Code - OSS, VSCodium) | `● auth.ts - toko-online - Visual Studio Code` | project `toko-online`, file `auth.ts` |
 | VS Code tanpa folder | `catatan.md - Visual Studio Code` | file saja |
 | VS Code tanpa editor, atau tab Welcome/Settings | `toko-online - Visual Studio Code`, `Welcome - toko-online - ...` | project saja (yang kedua), atau kosong (yang pertama) |
-| PyCharm dan IDE JetBrains lain | `toko-online – auth.py`, `toko-online [~/kode] – src/auth.py` | project `toko-online`, file `auth.py` |
+| Cursor, Windsurf | `● auth.ts - toko-online - Cursor` | sama dengan VS Code |
+| Antigravity (nama aplikasi di tengah) | `Semester 5 - Antigravity IDE - index.html` | project `Semester 5`, file `index.html` |
+| PyCharm, Android Studio, dan IDE JetBrains lain | `toko-online – auth.py`, `toko-online [~/kode] – src/auth.py` | project `toko-online`, file `auth.py` |
 | JupyterLab di browser | `analisis.ipynb - JupyterLab — Mozilla Firefox` | file `analisis.ipynb` |
 | Jupyter Notebook klasik | `analisis - Jupyter Notebook - Google Chrome` | file `analisis.ipynb` |
 
@@ -160,6 +164,7 @@ Diambil di `title.go` dari judul window, cuma untuk hasil `ngoding`. Pola yang t
 | Linux, Wayland lain (GNOME, KDE) | Belum didukung | `ext-idle-notify-v1` kalau compositor-nya punya (KWin punya, Mutter tidak) |
 | macOS | `osascript` ke System Events: nama proses aplikasi depan dan judul jendela depannya | `HIDIdleTime` dari `ioreg -c IOHIDSystem` (nanodetik) |
 
+- Daftar jendela terbuka (`open_apps`): Windows memakai `EnumWindows` (jendela tampil tanpa owner, bukan tool window, tidak cloaked, bukan desktop; jendela di desktop virtual lain ikut terlewat karena cloaked), Hyprland `hyprctl clients -j` (terpetakan, tidak disembunyikan, urut `focusHistoryID`), X11 `_NET_CLIENT_LIST_STACKING` (cadangan `_NET_CLIENT_LIST`), dan macOS nama aplikasi dari System Events (`background only` false) tanpa judul dan tanpa urutan pemakaian, jadi aturan judul seperti ChatGPT di browser tidak berlaku di sana.
 - Sesi Linux dipilih dari variabel lingkungan: `WAYLAND_DISPLAY` berarti Wayland (Hyprland kalau `HYPRLAND_INSTANCE_SIGNATURE` ada), selain itu `DISPLAY` berarti X11. X11 tidak dipakai di sesi Wayland, karena XWayland cuma melihat aplikasi X.
 - Di lingkungan yang belum didukung, heartbeat tetap terkirim dengan `activity` `lainnya` dan `idle_seconds` 0, lalu peringatannya dicatat sekali di log.
 - Klien `ext-idle-notify-v1` ditulis langsung di `wayland_linux.go` (beberapa pesan saja). Agent memasang notifikasi idle dengan timeout 1 detik; `idle_seconds` = waktu sejak event `idled` + 1 detik, dan kembali 0 saat `resumed`. Kalau compositor punya versi 2, yang dipakai `get_input_idle_notification`, yang cuma menghitung input keyboard dan mouse tanpa peduli idle inhibitor (video yang sedang diputar). Ini sama dengan perilaku `GetLastInputInfo`, XScreenSaver, dan `HIDIdleTime`.
@@ -177,7 +182,7 @@ Diambil di `title.go` dari judul window, cuma untuk hasil `ngoding`. Pola yang t
 Urutannya:
 
 1. Tampilkan data yang diambil, yang tidak diambil, siapa yang bisa melihat, rencana fitur lihat layar (belum ada di versi ini), dan cara uninstall. Lanjut setelah Enter, batal dengan Ctrl+C. `install.sh` membaca Enter dari `/dev/tty`, karena stdin-nya berisi script itu sendiri.
-2. Unduh biner yang cocok dari `https://github.com/Keyanffz/kelas3d-agent/releases/latest/download/`: `kelas3d-windows-amd64.exe` (Windows ARM memakainya lewat emulasi), `kelas3d-linux-amd64`, `kelas3d-darwin-arm64`, atau `kelas3d-darwin-amd64`. OS dan arsitektur lain ditolak dengan pesan jelas.
+2. Unduh biner yang cocok dari `https://github.com/Keyanffz/kelas3d-agent/releases/latest/download/` (atau `<server>/agent/` kalau disajikan lewat `sajikan.sh`): `kelas3d-windows-amd64.exe` (Windows ARM memakainya lewat emulasi), `kelas3d-linux-amd64`, `kelas3d-darwin-arm64`, atau `kelas3d-darwin-amd64`. OS dan arsitektur lain ditolak dengan pesan jelas.
 3. Taruh di folder user tanpa hak admin. Agent yang sedang jalan dihentikan dulu di Windows (file yang jalan tidak bisa ditimpa); di Linux dan macOS biner diganti lewat file sementara di folder yang sama lalu `mv`.
 4. Tambahkan ke PATH. Windows: PATH user untuk terminal berikutnya dan PATH sesi ini, jadi `kelas3d login` di perintah yang sama langsung jalan. Linux dan macOS: kalau folder tujuannya belum ada di PATH, baris `export PATH="$HOME/.local/bin:$PATH"` ditambahkan ke `~/.profile`, `~/.bashrc`, dan `~/.zshrc` yang ada (dibuat sesuai `$SHELL` kalau belum ada satu pun).
 
@@ -204,6 +209,19 @@ Langkah rilis (Key yang menjalankan):
 5. Coba dari laptop bersih dengan perintah install dari panel ketua kelas.
 
 Biner Go tanpa tanda tangan kadang ditandai Windows Defender atau SmartScreen. Kalau itu terjadi saat uji di Windows, catat pesannya.
+
+### Menyajikan dari server API
+
+Untuk demo di jaringan kelas dan uji di laptop sendiri, biner dan installer disajikan dari `kelas3d-api` yang sedang jalan, tanpa GitHub Releases dan tanpa internet (keputusan Key 9 Nov):
+
+```bash
+./sajikan.sh 192.168.1.11    # API di http://192.168.1.11:8000
+./sajikan.sh localhost       # uji di laptop ini
+```
+
+`sajikan.sh` menjalankan `build.sh` dengan `SERVER_URL=http://<host>:8000/api`, menyalin biner dan `SHA256SUMS` ke `kelas3d-api/public/agent/`, lalu menulis `install.sh` dan `install.ps1` ke `kelas3d-api/public/` dengan alamat unduh GitHub diganti `http://<host>:8000/agent`. Argumen boleh berupa alamat lengkap (`http://host:port`) kalau API tidak di port 8000, dan `KELAS3D_PUBLIC` menimpa lokasi folder public. Ketiganya diabaikan git di repo API.
+
+Host yang dipakai harus sama dengan `APP_URL` (atau `INSTALL_URL`) di `.env` API, karena perintah dari panel ketua memakai alamat itu. Alamat server ikut tertanam di biner dan tersimpan di `config.json` saat login, jadi kalau IP laptop server berubah, jalankan lagi `sajikan.sh`, lalu laptop peserta memasang ulang dengan kode baru.
 
 ## Dependensi
 
@@ -288,3 +306,58 @@ File diubah:
 
 - `install.sh`: komentar cara pakai.
 - `README.md`, `dokumentasi.md`: bentuk perintah install.
+
+### 2026-11-09 · Agent disajikan dari server API
+
+Keputusan Key untuk demo: laptop peserta mengunduh agent dari laptop Key, bukan dari GitHub Releases, supaya tidak butuh internet dan tidak perlu rilis tiap IP berubah.
+
+File baru:
+
+- `sajikan.sh`: build dengan alamat server, lalu taruh biner dan installer (alamat unduhnya diarahkan ke server itu) di `kelas3d-api/public/`. Lihat Menyajikan dari server API.
+
+File diubah:
+
+- `README.md`, `dokumentasi.md`: cara menyajikan dari server API.
+
+### 2026-11-09 · Folder tujuan installer Linux dan macOS
+
+Ditemukan saat uji install sungguhan di laptop Key: biner masuk ke `~/.npm-global/bin`, padahal `~/.local/bin` ada di PATH dan seharusnya didahulukan. Di `for d in $HOME/.local/bin:$HOME/bin:$PATH`, IFS cuma memecah hasil ekspansi, jadi titik dua yang ditulis langsung tidak memisah. Tiga kandidat pertama (`~/.local/bin`, `~/bin`, dan entri pertama PATH) jadi satu string yang tidak cocok, lalu yang terpilih folder HOME berikutnya di PATH.
+
+File diubah:
+
+- `install.sh`: daftar kandidat ditaruh di variabel `kandidat` dulu, baru dipecah.
+
+Dicoba di HOME sementara: PATH `.local/bin` lalu `.npm-global/bin` (kasus Key) dan urutan sebaliknya sama-sama ke `~/.local/bin`, PATH yang cuma berisi `.npm-global/bin` ke folder itu, dan tanpa folder HOME di PATH ke `~/.local/bin` dengan baris PATH ditambahkan. `sajikan.sh localhost` dijalankan ulang; biner tidak berubah (SHA256 sama).
+
+### 2026-11-09 · Judul Cursor, Antigravity, dan Windsurf
+
+Masukan Key saat gladi resik: tidak semua peserta memakai VS Code. Turunan VS Code sekarang ikut dibaca project dan file-nya. Format Antigravity diambil dari jendela asli di laptop Key (`Semester 5 - Antigravity IDE - index.html`, proses `antigravity-ide`), dengan nama aplikasi di tengah, bukan di akhir. Kategorinya diatur lewat `app_rules` di API (ngoding).
+
+File diubah:
+
+- `title.go`: daftar `vscodeForks`; nama aplikasi di akhir dibaca seperti VS Code, di tengah dibaca sebagai project lalu file.
+- `title_test.go`: kasus Cursor, Windsurf tanpa editor, Antigravity (dengan dan tanpa `●`, tanpa editor), dan Android Studio.
+- `dokumentasi.md`: tabel Project, file, dan bahasa.
+
+Tes: `go test -race ./...` lulus, `go vet` bersih untuk Linux, Windows, dan macOS. Disajikan ulang dengan `./sajikan.sh 192.168.43.6`; laptop yang sudah terpasang perlu install ulang untuk mendapat pembaca judul baru.
+
+### 2026-11-09 · Daftar aplikasi yang terbuka
+
+Usulan Key saat gladi resik: selain aplikasi yang sedang fokus, tampilkan aplikasi lain yang terbuka ala status Discord. Keputusan Key: semua jendela terbuka, cuma ketua kelas dan koordinator yang melihat, tampil di panel detail.
+
+File baru:
+
+- `os_linux_test.go`: penguraian `hyprctl clients -j` (urutan fokus, jendela tersembunyi, tidak terpetakan, dan tanpa judul).
+
+File diubah:
+
+- `api.go`: field `open_apps` dan tipe `openApp`.
+- `run.go`: `collect` membaca daftar jendela; `openApps` mencocokkan, membuang aplikasi fokus dan label kembar, membatasi 8.
+- `os_windows.go`: `windows()` lewat `EnumWindows`; pembacaan satu jendela dipisah jadi `hwndWindow`.
+- `os_linux.go`: `windows()` untuk Hyprland (`hyprlandClients`) dan X11 (`x11Windows`, `x11Info`).
+- `os_darwin.go`: `windows()` lewat System Events.
+- `title_test.go`: `TestOpenApps`, dan `TestReportNeverSendsTitles` ikut memeriksa `open_apps`.
+- `install.sh`, `install.ps1`: teks privasi menyebut daftar aplikasi yang terbuka dan contoh IDE baru.
+- `dokumentasi.md`: isi heartbeat dan cara membaca daftar jendela per OS.
+
+Tes: `go test -race ./...` lulus, `go vet` bersih untuk Linux, Windows, dan macOS, `sh -n install.sh`; dicoba langsung di Hyprland laptop Key lewat tes sementara (empat aplikasi terbaca, `kitty` kembar dihitung sekali). Bagian Windows dan macOS belum dicoba di laptop sungguhan.

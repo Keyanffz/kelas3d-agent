@@ -122,7 +122,38 @@ func (a *agent) collect(s *sensor, conf *agentConfig, now time.Time) report {
 	a.logChange("window", errMsg("gagal membaca jendela aktif", err))
 	idle, err := s.idle()
 	a.logChange("idle", errMsg("gagal membaca waktu idle", err))
-	return buildReport(conf.AppRules, w, idle, localIP(a.cfg.Server), now)
+	open, err := s.windows()
+	a.logChange("windows", errMsg("gagal membaca daftar jendela", err))
+	r := buildReport(conf.AppRules, w, idle, localIP(a.cfg.Server), now)
+	r.OpenApps = openApps(conf.AppRules, r.AppLabel, open)
+	return r
+}
+
+const maxOpenApps = 8
+
+// openApps: aplikasi lain yang jendelanya terbuka, urut dari yang terakhir dipakai, cuma kategori dan label
+// hasil app_rules (judul jendela tidak pernah dikirim). Aplikasi yang sedang fokus dan label kembar dilewati.
+func openApps(rules []appRule, focused *string, ws []window) []openApp {
+	if ws == nil {
+		return nil
+	}
+	apps := []openApp{}
+	seen := map[string]bool{}
+	if focused != nil {
+		seen[*focused] = true
+	}
+	for _, w := range ws {
+		activity, label := matchApp(rules, w)
+		label = limit(label, 255)
+		if label == "" || seen[label] {
+			continue
+		}
+		seen[label] = true
+		if apps = append(apps, openApp{activity, label}); len(apps) == maxOpenApps {
+			break
+		}
+	}
+	return apps
 }
 
 // buildReport menyusun laporan dari jendela aktif. Judul jendela tidak pernah masuk laporan: project, file,

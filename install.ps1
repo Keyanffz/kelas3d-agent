@@ -16,14 +16,17 @@ Agent Kelas 3D akan dipasang di laptop ini.
 
 Yang dikirim ke server tiap 10 detik, cuma selama jam kelas:
   - kategori dan nama aplikasi yang sedang dipakai, contoh "ngoding, VS Code"
-  - untuk aplikasi coding (VS Code, PyCharm, Jupyter): nama project, file, dan bahasanya
+  - kategori dan nama aplikasi lain yang jendelanya sedang terbuka, tanpa judul jendelanya
+  - untuk aplikasi coding (VS Code, Cursor, Antigravity, PyCharm, Jupyter, dan sejenisnya):
+    nama project, file, dan bahasanya
   - lama tidak ada ketikan atau gerakan mouse
   - IP lokal laptop, untuk tahu kamu ada di ruangan mana
 Tidak dikirim: judul jendela browser dan aplikasi chat, isi layar, isi file, dan kamera.
 
 Yang bisa melihat:
   - teman sekelas: avatarmu, kategori aktivitas, dan nama aplikasinya
-  - ketua kelas dan koordinator: ditambah nama project, file, bahasa, dan rekap waktunya
+  - ketua kelas dan koordinator: ditambah nama project, file, bahasa, daftar aplikasi yang terbuka,
+    dan rekap waktunya
 Rencana ke depan: koordinator bisa melihat layarmu secara langsung (tanpa rekaman) lewat ketua kelas.
 Fitur itu belum ada di versi ini dan akan diberitahukan sebelum dipakai.
 

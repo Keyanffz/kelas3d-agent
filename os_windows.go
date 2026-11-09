@@ -22,6 +22,8 @@ var (
 	user32                    = windows.NewLazySystemDLL("user32.dll")
 	kernel32                  = windows.NewLazySystemDLL("kernel32.dll")
 	procGetWindowTextW        = user32.NewProc("GetWindowTextW")
+	procGetWindow             = user32.NewProc("GetWindow")
+	procGetWindowLongPtrW     = user32.NewProc("GetWindowLongPtrW")
 	procGetLastInputInfo      = user32.NewProc("GetLastInputInfo")
 	procGetTickCount          = kernel32.NewProc("GetTickCount")
 	procFreeConsole           = kernel32.NewProc("FreeConsole")
@@ -94,7 +96,60 @@ func (*sensor) window() (window, error) {
 	if hwnd == 0 {
 		return window{}, nil
 	}
+	return hwndWindow(hwnd)
+}
 
+// EnumWindows memanggil callback untuk tiap jendela tingkat atas, dari yang paling atas. Callback dibuat
+// sekali karena jumlah callback per proses terbatas, jadi hasilnya ditampung di variabel paket; windows()
+// cuma dipanggil dari loop run.
+var (
+	enumFound    []windows.HWND
+	enumCallback = windows.NewCallback(func(hwnd windows.HWND, _ uintptr) uintptr {
+		enumFound = append(enumFound, hwnd)
+		return 1
+	})
+)
+
+const (
+	gwOwner        = 4
+	gwlExStyle     = -20
+	wsExToolWindow = 0x80
+)
+
+// windows: jendela aplikasi yang tampil di taskbar. Yang tersembunyi, dialog (punya owner), tool window,
+// cloaked (aplikasi UWP yang tidak tampil, desktop virtual lain), desktop, dan tanpa judul dilewati.
+func (*sensor) windows() ([]window, error) {
+	enumFound = enumFound[:0]
+	if err := windows.EnumWindows(enumCallback, nil); err != nil {
+		return nil, err
+	}
+	shell := windows.GetShellWindow()
+	list := []window{}
+	for _, h := range enumFound {
+		if h == shell || !windows.IsWindowVisible(h) || cloaked(h) {
+			continue
+		}
+		if owner, _, _ := procGetWindow.Call(uintptr(h), gwOwner); owner != 0 {
+			continue
+		}
+		idx := int32(gwlExStyle)
+		if style, _, _ := procGetWindowLongPtrW.Call(uintptr(h), uintptr(idx)); style&wsExToolWindow != 0 {
+			continue
+		}
+		if w, _ := hwndWindow(h); w.Title != "" {
+			list = append(list, w)
+		}
+	}
+	return list, nil
+}
+
+func cloaked(h windows.HWND) bool {
+	var c uint32
+	return windows.DwmGetWindowAttribute(h, windows.DWMWA_CLOAKED, unsafe.Pointer(&c), 4) == nil && c != 0
+}
+
+// hwndWindow: judul dan nama proses satu jendela.
+func hwndWindow(hwnd windows.HWND) (window, error) {
 	buf := make([]uint16, 512)
 	n, _, _ := procGetWindowTextW.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 	w := window{Title: windows.UTF16ToString(buf[:n])}

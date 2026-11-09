@@ -42,4 +42,10 @@ Build rilis untuk semua OS ke `dist/`:
 SERVER_URL=https://kelas3d.contoh.id/api VERSION=0.1.0 ./build.sh
 ```
 
+Sajikan dari server API sendiri, tanpa GitHub Releases (demo di jaringan kelas, atau `localhost` untuk uji):
+
+```bash
+./sajikan.sh 192.168.1.11
+```
+
 Perintah lengkap, format file, isi heartbeat, cara baca jendela aktif per OS, dan langkah rilis ada di `dokumentasi.md`.

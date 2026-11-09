@@ -24,6 +24,10 @@ func language(file string) string {
 // Akhiran judul tiap edisi VS Code.
 var vscodeSuffixes = []string{" - Visual Studio Code", " - Visual Studio Code - Insiders", " - Code - OSS", " - VSCodium"}
 
+// Nama aplikasi turunan VS Code di judul. Cursor dan Windsurf mengikuti VS Code, Antigravity menaruhnya di
+// tengah: "Semester 5 - Antigravity IDE - index.html". "Antigravity IDE" dicek sebelum "Antigravity".
+var vscodeForks = []string{" - Antigravity IDE", " - Antigravity", " - Cursor", " - Windsurf"}
+
 // Nama proses IDE JetBrains. Formatnya sama dengan PyCharm.
 var jetbrains = []string{"pycharm", "idea", "webstorm", "phpstorm", "goland", "clion", "rider", "rubymine", "datagrip", "studio"}
 
@@ -34,6 +38,14 @@ func codeDetail(w window) (project, file string) {
 	for _, suffix := range vscodeSuffixes {
 		if rest, ok := strings.CutSuffix(title, suffix); ok {
 			return vscodeTitle(rest)
+		}
+	}
+	for _, app := range vscodeForks {
+		if rest, ok := strings.CutSuffix(title, app); ok {
+			return vscodeTitle(rest)
+		}
+		if project, file, ok := strings.Cut(title, app+" - "); ok {
+			return cleanName(strings.TrimPrefix(project, "●")), fileName(strings.TrimPrefix(file, "●"))
 		}
 	}
 	if name, ok := jupyterTitle(title); ok {

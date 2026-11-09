@@ -27,6 +27,12 @@ const frontScript = `tell application "System Events"
 	return (name of p) & linefeed & t
 end tell`
 
+// Aplikasi yang punya jendela (bukan proses latar). Judulnya tidak diambil, cukup nama aplikasinya.
+const appsScript = `tell application "System Events"
+	set AppleScript's text item delimiters to linefeed
+	return (name of every application process whose background only is false) as text
+end tell`
+
 var hidIdle = regexp.MustCompile(`"HIDIdleTime" = (\d+)`)
 
 type sensor struct{}
@@ -42,6 +48,22 @@ func (*sensor) window() (window, error) {
 	}
 	name, title, _ := strings.Cut(strings.TrimRight(string(out), "\n"), "\n")
 	return window{Process: name, Title: title}, nil
+}
+
+// windows: aplikasi yang sedang terbuka, tanpa urutan pemakaian dan tanpa judul, jadi aturan judul (ChatGPT di
+// browser) tidak berlaku di sini.
+func (*sensor) windows() ([]window, error) {
+	out, err := exec.Command("osascript", "-e", appsScript).Output()
+	if err != nil {
+		return nil, fmt.Errorf("osascript: %w", err)
+	}
+	list := []window{}
+	for name := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		if name != "" {
+			list = append(list, window{Process: name})
+		}
+	}
+	return list, nil
 }
 
 // idle: HIDIdleTime dari IOHIDSystem, dalam nanodetik.
